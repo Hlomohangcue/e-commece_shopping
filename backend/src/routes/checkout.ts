@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '../db';
 import { requireAuth } from '../middleware/auth';
 import { createCheckoutSession, getPaymentConfig, getExchangeRate } from '../utils/stripe';
+import { isHttpUrl, isNonEmptyString, isPositiveInteger, isRecord, isSafeIdentifier } from '../utils/validation';
 
 type CheckoutItem = {
   productId: string;
@@ -17,7 +18,7 @@ type ProductRecord = {
   price: number;
 };
 
-type ShippingAddress = Prisma.JsonObject & {
+type ShippingAddress = Record<string, unknown> & {
   country?: string;
   countryCode?: string;
   state?: string;
@@ -30,6 +31,9 @@ router.use(requireAuth);
 
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!isRecord(req.body)) {
+      return res.status(400).json({ message: 'Request body must be an object.' });
+    }
     const { items, shippingAddress, successUrl, cancelUrl } = req.body as {
       items: CheckoutItem[];
       shippingAddress: ShippingAddress;
@@ -37,8 +41,16 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
       cancelUrl: string;
     };
 
-    if (!Array.isArray(items) || items.length === 0) {
+    if (!Array.isArray(items) || items.length === 0 || items.length > 100 || !items.every((item) =>
+      isRecord(item) && isSafeIdentifier(item.productId) && isPositiveInteger(item.quantity)
+    )) {
       return res.status(400).json({ message: 'Cart items are required for checkout.' });
+    }
+    if (!isRecord(shippingAddress) || Object.keys(shippingAddress).length === 0 || !Object.values(shippingAddress).every((value) => isNonEmptyString(value, 200))) {
+      return res.status(400).json({ message: 'A valid shipping address is required.' });
+    }
+    if (!isHttpUrl(successUrl) || !isHttpUrl(cancelUrl)) {
+      return res.status(400).json({ message: 'Valid success and cancel URLs are required.' });
     }
 
     // Determine customer location and payment config
@@ -116,10 +128,17 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
       },
     });
 
-    const session = await createCheckoutSession(lineItems, successUrl, cancelUrl, {
-      orderId: order.id,
-      country: countryCode,
-    }, paymentConfig);
+    let session;
+    try {
+      session = await createCheckoutSession(lineItems, successUrl, cancelUrl, {
+        orderId: order.id,
+        country: countryCode,
+      }, paymentConfig);
+    } catch (error) {
+      await prisma.orderItem.deleteMany({ where: { orderId: order.id } });
+      await prisma.order.delete({ where: { id: order.id } });
+      throw error;
+    }
 
     res.json({ url: session.url });
   } catch (error) {

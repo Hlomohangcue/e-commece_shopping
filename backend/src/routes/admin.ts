@@ -3,6 +3,36 @@ import fs from 'fs';
 import path from 'path';
 import prisma from '../db';
 import { requireAdmin } from '../middleware/auth';
+import { isHttpUrl, isNonEmptyString, isNonNegativeInteger, isRecord, isSafeIdentifier, isValidImageFile, isValidSlug } from '../utils/validation';
+
+type AdminUser = {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  createdAt: Date;
+  _count: { orders: number };
+  orders: Array<{ createdAt: Date }>;
+};
+
+type AdminOrderItem = {
+  id: string;
+  quantity: number;
+  price: number;
+  product: { id: string; name: string; slug: string };
+};
+
+type AdminOrder = {
+  id: string;
+  status: string;
+  totalAmount: number;
+  paymentIntentId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  shippingAddress: string;
+  user: { id: string; email: string; name: string | null };
+  items: AdminOrderItem[];
+};
 
 const router = Router();
 const backendUrl = process.env.BACKEND_URL || 'http://localhost:4000';
@@ -63,7 +93,7 @@ router.get('/users', async (req: Request, res: Response, next: NextFunction) => 
     });
 
     res.json(
-      users.map((user) => ({
+      users.map((user: AdminUser) => ({
         id: user.id,
         email: user.email,
         name: user.name,
@@ -106,7 +136,7 @@ router.get('/orders', async (req: Request, res: Response, next: NextFunction) =>
     });
 
     res.json(
-      orders.map((order) => ({
+      orders.map((order: AdminOrder) => ({
         id: order.id,
         status: order.status,
         totalAmount: order.totalAmount,
@@ -121,7 +151,7 @@ router.get('/orders', async (req: Request, res: Response, next: NextFunction) =>
           }
         })(),
         user: order.user,
-        items: order.items.map((item) => ({
+        items: order.items.map((item: AdminOrderItem) => ({
           id: item.id,
           quantity: item.quantity,
           price: item.price,
@@ -148,7 +178,23 @@ router.get('/products', async (req: Request, res: Response, next: NextFunction) 
 
 router.post('/products', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!isRecord(req.body)) {
+      return res.status(400).json({ message: 'Request body must be an object.' });
+    }
     const { name, slug, description, price, currency, categoryName, inventory, published, featured, imageUrls, imageFiles } = req.body;
+    if (!isNonEmptyString(name, 200) || !isValidSlug(slug) || !isNonEmptyString(description, 5000) ||
+      typeof price !== 'number' || !Number.isFinite(price) || price < 0 || !isNonEmptyString(currency, 10) ||
+      !isNonEmptyString(categoryName, 191) || !isNonNegativeInteger(inventory) ||
+      (published !== undefined && typeof published !== 'boolean') || (featured !== undefined && typeof featured !== 'boolean')) {
+      return res.status(400).json({ message: 'Invalid product fields.' });
+    }
+    if (imageUrls !== undefined && ((!Array.isArray(imageUrls) && !isHttpUrl(imageUrls)) ||
+      (Array.isArray(imageUrls) && !imageUrls.every((url) => isHttpUrl(url))))) {
+      return res.status(400).json({ message: 'Image URLs are invalid.' });
+    }
+    if (imageFiles !== undefined && (!Array.isArray(imageFiles) || !imageFiles.every(isValidImageFile))) {
+      return res.status(400).json({ message: 'Image files are invalid.' });
+    }
 
     const imageRecords = [];
     if (Array.isArray(imageFiles) && imageFiles.length > 0) {
@@ -192,7 +238,30 @@ router.post('/products', async (req: Request, res: Response, next: NextFunction)
 router.put('/products/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const productId = req.params.id;
-    const { name, description, price, currency, inventory, published, featured, imageUrls, imageFiles } = req.body;
+    if (!isSafeIdentifier(productId) || !isRecord(req.body)) {
+      return res.status(400).json({ message: 'Product ID or request body is invalid.' });
+    }
+    const { name, slug, description, price, currency, categoryName, inventory, published, featured, imageUrls, imageFiles } = req.body;
+    if (name !== undefined && !isNonEmptyString(name, 200) || slug !== undefined && !isValidSlug(slug) ||
+      description !== undefined && !isNonEmptyString(description, 5000) || currency !== undefined && !isNonEmptyString(currency, 10) ||
+      price !== undefined && (typeof price !== 'number' || !Number.isFinite(price) || price < 0) ||
+      inventory !== undefined && !isNonNegativeInteger(inventory) ||
+      published !== undefined && typeof published !== 'boolean' || featured !== undefined && typeof featured !== 'boolean' ||
+      categoryName !== undefined && !isNonEmptyString(categoryName, 191)) {
+      return res.status(400).json({ message: 'Invalid product fields.' });
+    }
+    if (name === undefined && slug === undefined && description === undefined && price === undefined && currency === undefined &&
+      categoryName === undefined && inventory === undefined && published === undefined && featured === undefined &&
+      imageUrls === undefined && imageFiles === undefined) {
+      return res.status(400).json({ message: 'At least one product field is required.' });
+    }
+    if (imageUrls !== undefined && ((!Array.isArray(imageUrls) && !isHttpUrl(imageUrls)) ||
+      (Array.isArray(imageUrls) && !imageUrls.every((url) => isHttpUrl(url))))) {
+      return res.status(400).json({ message: 'Image URLs are invalid.' });
+    }
+    if (imageFiles !== undefined && (!Array.isArray(imageFiles) || !imageFiles.every(isValidImageFile))) {
+      return res.status(400).json({ message: 'Image files are invalid.' });
+    }
 
     const imageRecords = [];
     if (Array.isArray(imageFiles) && imageFiles.length > 0) {
@@ -207,6 +276,10 @@ router.put('/products/:id', async (req: Request, res: Response, next: NextFuncti
     }
 
     const updateData: any = { name, description, price, currency, inventory, published, featured };
+    if (slug !== undefined) updateData.slug = slug;
+    if (categoryName !== undefined) {
+      updateData.category = { connectOrCreate: { where: { name: categoryName }, create: { name: categoryName } } };
+    }
 
     if (imageRecords.length > 0) {
       await prisma.productImage.deleteMany({ where: { productId } });
@@ -227,6 +300,9 @@ router.put('/products/:id', async (req: Request, res: Response, next: NextFuncti
 
 router.delete('/products/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!isSafeIdentifier(req.params.id)) {
+      return res.status(400).json({ message: 'Product ID is invalid.' });
+    }
     const productId = req.params.id;
     await prisma.product.delete({ where: { id: productId } });
     res.json({ deleted: true });

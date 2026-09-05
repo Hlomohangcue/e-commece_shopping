@@ -19,7 +19,7 @@ type Order = {
 
 export default function DashboardPage() {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [user, setUser] = useState<{ name: string; email: string } | null>(null);
+  const [user, setUser] = useState<{ name: string | null; email: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

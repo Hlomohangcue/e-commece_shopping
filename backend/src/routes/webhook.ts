@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import Stripe from 'stripe';
+import { Prisma } from '@prisma/client';
 import prisma from '../db';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', { apiVersion: '2026-04-22.dahlia' });
@@ -23,7 +24,7 @@ router.post('/', express.raw({ type: 'application/json' }), async (req: Request,
     const orderId = session.metadata?.orderId as string | undefined;
 
     if (orderId) {
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const order = await tx.order.findUnique({
           where: { id: orderId },
           include: { items: true },

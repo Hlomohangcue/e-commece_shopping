@@ -73,6 +73,10 @@ export default function CheckoutExamplePage() {
         },
         body: JSON.stringify({
           items: cart,
+          shippingAddress: {
+            country: 'US',
+            countryCode: 'US',
+          },
           successUrl: window.location.origin + '/checkout/success',
           cancelUrl: window.location.origin + '/checkout/cancel',
         }),
