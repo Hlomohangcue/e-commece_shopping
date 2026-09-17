@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response, Router } from 'express';
 import fs from 'fs';
 import path from 'path';
+import { Prisma } from '@prisma/client';
 import prisma from '../db';
 import { requireAdmin } from '../middleware/auth';
 import { isHttpUrl, isNonEmptyString, isNonNegativeInteger, isRecord, isSafeIdentifier, isValidImageFile, isValidSlug } from '../utils/validation';
@@ -306,6 +307,43 @@ router.delete('/products/:id', async (req: Request, res: Response, next: NextFun
     const productId = req.params.id;
     await prisma.product.delete({ where: { id: productId } });
     res.json({ deleted: true });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+      return res.status(409).json({
+        message:
+          "This product can't be deleted because it's referenced by an existing order, cart, wishlist, or review. Unpublish it instead, or remove those references first.",
+      });
+    }
+    next(error);
+  }
+});
+
+const ALLOWED_ORDER_STATUSES = ['pending', 'paid', 'fulfilled', 'cancelled'];
+
+router.put('/orders/:id/status', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!isSafeIdentifier(req.params.id)) {
+      return res.status(400).json({ message: 'Order ID is invalid.' });
+    }
+    if (!isRecord(req.body) || typeof req.body.status !== 'string' || !ALLOWED_ORDER_STATUSES.includes(req.body.status)) {
+      return res.status(400).json({ message: `Status must be one of: ${ALLOWED_ORDER_STATUSES.join(', ')}.` });
+    }
+
+    const existing = await prisma.order.findUnique({ where: { id: req.params.id } });
+    if (!existing) {
+      return res.status(404).json({ message: 'Order not found.' });
+    }
+
+    const updated = await prisma.order.update({
+      where: { id: req.params.id },
+      data: { status: req.body.status },
+      include: {
+        user: { select: { id: true, email: true, name: true } },
+        items: { include: { product: { select: { id: true, name: true, slug: true } } } },
+      },
+    });
+
+    res.json(updated);
   } catch (error) {
     next(error);
   }

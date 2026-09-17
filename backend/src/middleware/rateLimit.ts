@@ -8,7 +8,7 @@ type ClientWindow = {
 export function createRateLimiter(maxRequests: number, windowMs: number, maxClients = 1000) {
   const clients = new Map<string, ClientWindow>();
 
-  return (req: Request, res: Response, next: NextFunction) => {
+  const limiter = (req: Request, res: Response, next: NextFunction) => {
     const now = Date.now();
     for (const [key, window] of clients) {
       if (window.resetAt <= now) clients.delete(key);
@@ -32,4 +32,8 @@ export function createRateLimiter(maxRequests: number, windowMs: number, maxClie
     }
     next();
   };
+
+  // Tests may clear only the in-memory window between independent cases.
+  // Production never calls this, so its rate-limit behaviour is unchanged.
+  return Object.assign(limiter, { reset: () => clients.clear() });
 }

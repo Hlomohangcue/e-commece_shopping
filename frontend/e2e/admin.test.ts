@@ -23,6 +23,7 @@
 
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
 import { randomBytes } from 'crypto';
+import { prisma } from '../../backend/src/tests/helpers/fixtures';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -60,6 +61,7 @@ let adminUserId: string | null = null;
 let customerUserId: string | null = null;
 let adminToken: string | null = null;
 let createdProductId: string | null = null;
+const freshUserIds: string[] = [];
 
 // ── global setup: seed admin + customer via backend API ───────────────────────
 
@@ -159,7 +161,19 @@ test.afterAll(async ({ browser }) => {
     // and calling it out in the final database audit.
   }
 
+  const userIds = [customerUserId, ...freshUserIds].filter(Boolean) as string[];
+  if (userIds.length) {
+    const orders = await prisma.order.findMany({ where: { userId: { in: userIds } }, select: { id: true } });
+    const orderIds = orders.map((order) => order.id);
+    await prisma.wishlist.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.review.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.cartItem.deleteMany({ where: { userId: { in: userIds } } });
+    if (orderIds.length) await prisma.orderItem.deleteMany({ where: { orderId: { in: orderIds } } });
+    if (orderIds.length) await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
+    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  }
   await page.close();
+  await prisma.$disconnect();
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -198,6 +212,7 @@ test.describe('Suite 1 — Registration & login foundation', () => {
     // This user will appear in the post-test DB audit and must be accounted for.
     // We store it for the afterAll cleanup note.
     expect(userId).toBeTruthy();
+    freshUserIds.push(userId);
 
     // Clean up via page.evaluate calling a cleanup helper
     // Since no user-delete endpoint exists, we document this account

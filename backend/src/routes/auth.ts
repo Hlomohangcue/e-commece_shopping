@@ -4,9 +4,15 @@ import jwt from 'jsonwebtoken';
 import { Prisma } from '@prisma/client';
 import prisma from '../db';
 import { requireAuth } from '../middleware/auth';
+import { createRateLimiter } from '../middleware/rateLimit';
 import { isNonEmptyString, isRecord, isValidEmail } from '../utils/validation';
 
 const router = Router();
+
+// Protect password guessing and account-creation abuse independently. These
+// deliberately conservative per-IP windows remain in effect in every runtime.
+export const loginRateLimiter = createRateLimiter(10, 15 * 60_000);
+export const registerRateLimiter = createRateLimiter(5, 60 * 60_000);
 
 const jwtSecret = process.env.JWT_SECRET;
 if (!jwtSecret) {
@@ -18,7 +24,7 @@ const createToken = (user: any) =>
     expiresIn: '7d',
   });
 
-router.post('/register', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/register', registerRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!isRecord(req.body)) {
       return res.status(400).json({ message: 'Request body must be an object.' });
@@ -41,7 +47,7 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
   }
 });
 
-router.post('/login', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/login', loginRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!isRecord(req.body)) {
       return res.status(400).json({ message: 'Request body must be an object.' });

@@ -34,6 +34,7 @@ import {
   createTestOrder,
   trackUserId,
   trackProductId,
+  trackCategoryId,
   signTestToken,
   cleanup,
   prisma,
@@ -322,6 +323,7 @@ describe('Group D — Product CRUD', () => {
     createdProductId = res.body.id;
     createdProductSlug = res.body.slug;
     apiCreatedProductIds.push(createdProductId);
+    trackCategoryId(res.body.category.id);
   });
 
   it('D2: GET /api/admin/products → list includes newly created product', async () => {

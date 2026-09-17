@@ -23,6 +23,7 @@
 
 import { test, expect, type Page } from '@playwright/test';
 import { randomBytes } from 'crypto';
+import { prisma } from '../../backend/src/tests/helpers/fixtures';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -46,6 +47,21 @@ const RUN_ID = uid();
 const CUSTOMER_EMAIL = `test-customer-e2e-${RUN_ID}@example.test`;
 const CUSTOMER_PASSWORD = 'E2ePass123!';
 const CUSTOMER_NAME = `E2E Customer ${RUN_ID}`;
+let customerUserId: string | null = null;
+
+test.afterAll(async () => {
+  if (customerUserId) {
+    const orders = await prisma.order.findMany({ where: { userId: customerUserId }, select: { id: true } });
+    const orderIds = orders.map((order) => order.id);
+    await prisma.wishlist.deleteMany({ where: { userId: customerUserId } });
+    await prisma.review.deleteMany({ where: { userId: customerUserId } });
+    await prisma.cartItem.deleteMany({ where: { userId: customerUserId } });
+    if (orderIds.length) await prisma.orderItem.deleteMany({ where: { orderId: { in: orderIds } } });
+    if (orderIds.length) await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
+    await prisma.user.delete({ where: { id: customerUserId } });
+  }
+  await prisma.$disconnect();
+});
 
 // Product created via API fixture before E2E — we read it from the API.
 // The backend smoke tests and customer.test.ts already seed a product.
@@ -78,6 +94,11 @@ test.describe('Suite 1 — Registration', () => {
     // Token must be stored
     const token = await getToken(page);
     expect(token).toBeTruthy();
+    customerUserId = await page.evaluate(async (authToken) => {
+      const response = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${authToken}` } });
+      return (await response.json()).id;
+    }, token!);
+    expect(customerUserId).toBeTruthy();
   });
 
   test('S1-3: Duplicate registration shows an error, does not redirect', async ({ page }) => {

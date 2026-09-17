@@ -11,3 +11,6 @@ dist/
 *.tsbuildinfo
 .vscode/
 .idea/
+frontend/playwright-report/
+frontend/test-results/
+backend/uploads/

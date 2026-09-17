@@ -32,7 +32,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     const pricedItems = items.map((item) => {
       const price = prices.get(item.productId);
       if (price === undefined) {
-        throw new Error(`Product ${item.productId} not found`);
+        throw Object.assign(new Error(`Product ${item.productId} not found`), { status: 404 });
       }
       return { ...item, price };
     });

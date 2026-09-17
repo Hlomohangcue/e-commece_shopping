@@ -67,7 +67,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     const lineItems = await Promise.all(items.map(async (item) => {
       const product = products.find((p) => p.id === item.productId);
       if (!product) {
-        throw new Error(`Product ${item.productId} not found`);
+        throw Object.assign(new Error(`Product ${item.productId} not found`), { status: 404 });
       }
 
       let unitAmount = Math.round(product.price * 100);

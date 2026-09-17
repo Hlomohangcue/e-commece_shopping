@@ -62,6 +62,11 @@ export function trackProductId(id: string): void {
   track('productIds', id);
 }
 
+/** Registers a category created through an HTTP product API response. */
+export function trackCategoryId(id: string): void {
+  track('categoryIds', id);
+}
+
 // ── factories ──────────────────────────────────────────────────────────────
 
 /**

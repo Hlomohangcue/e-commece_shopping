@@ -130,6 +130,8 @@ export default function AdminPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [showDialog, setShowDialog] = useState(false);
   const [isCreated, setIsCreated] = useState(false);
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
+
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -303,6 +305,24 @@ export default function AdminPage() {
     }
   };
 
+  const handleUpdateOrderStatus = async (orderId: string, status: string) => {
+    if (!getToken()) return;
+    try {
+      setUpdatingOrderId(orderId);
+      setError(null);
+      const updated = await fetchJson<AdminOrder>(`/api/admin/orders/${orderId}/status`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({ status }),
+      });
+      setOrders((prev) => prev.map((order) => (order.id === orderId ? updated : order)));
+    } catch (err: any) {
+      setError(err?.message || 'Unable to update order status.');
+    } finally {
+      setUpdatingOrderId(null);
+    }
+  };
+
   return (
     <main className="min-h-[calc(100vh-88px)] bg-slate-950 px-6 py-12 text-slate-100">
       <div className="mx-auto max-w-7xl space-y-8">
@@ -403,6 +423,32 @@ export default function AdminPage() {
                         </li>
                       ))}
                     </ul>
+                   <div className="mt-4 flex flex-wrap items-center gap-3">
+                      <label className="text-sm text-slate-400">
+                        Status:
+                        <select
+                          value={order.status}
+                          disabled={updatingOrderId === order.id}
+                          onChange={(event) => handleUpdateOrderStatus(order.id, event.target.value)}
+                          className="ml-2 rounded-full border border-slate-700 bg-slate-950 px-4 py-2 text-sm text-slate-100 outline-none focus:border-slate-500 disabled:opacity-60"
+                        >
+                          <option value="pending">Pending</option>
+                          <option value="paid">Paid</option>
+                          <option value="fulfilled">Fulfilled</option>
+                          <option value="cancelled">Cancelled</option>
+                        </select>
+                      </label>
+                      {order.status === 'paid' && (
+                        <button
+                          type="button"
+                          disabled={updatingOrderId === order.id}
+                          onClick={() => handleUpdateOrderStatus(order.id, 'fulfilled')}
+                          className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-600 disabled:opacity-60"
+                        >
+                          {updatingOrderId === order.id ? 'Approving…' : 'Approve order'}
+                        </button>
+                      )}
+                  </div> 
                   </div>
                 </div>
               ))

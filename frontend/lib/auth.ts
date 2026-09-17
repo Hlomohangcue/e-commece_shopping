@@ -32,10 +32,26 @@ export function getToken(): string | null {
 
 export function setToken(token: string): void {
   window.localStorage.setItem(TOKEN_KEY, token);
+  window.dispatchEvent(new Event('auth-changed'));
 }
 
 export function clearToken(): void {
-  if (typeof window !== 'undefined') window.localStorage.removeItem(TOKEN_KEY);
+  if (typeof window !== 'undefined') {
+    window.localStorage.removeItem(TOKEN_KEY);
+    window.dispatchEvent(new Event('auth-changed'));
+  }
+}
+
+export function getUserRole(): string | null {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const payloadSegment = token.split('.')[1];
+    const payload = JSON.parse(atob(payloadSegment));
+    return typeof payload.role === 'string' ? payload.role : null;
+  } catch {
+    return null;
+  }
 }
 
 export function authHeaders(): Record<string, string> {

@@ -22,7 +22,16 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     const payload = jwt.verify(token, jwtSecret) as unknown as JwtPayload;
     (req as any).userId = payload.sub;
     (req as any).userRole = payload.role;
-    next();
+    // Re-verify the user exists in the database so that tokens for deleted
+    // users are rejected on every protected request (not just /me).
+    prisma.user.findUnique({ where: { id: payload.sub }, select: { id: true } })
+      .then((user) => {
+        if (!user) {
+          return res.status(401).json({ message: 'Authorization required' });
+        }
+        next();
+      })
+      .catch(() => res.status(401).json({ message: 'Authorization required' }));
   } catch {
     res.status(401).json({ message: 'Invalid token' });
   }
