@@ -244,7 +244,11 @@ export default function AdminPage() {
       };
 
       if (imageBase64) {
-        payload.imageFiles = [{ filename: imageFile?.name || 'product.png', data: imageBase64 }];
+        const originalName = imageFile?.name || 'product.png';
+        const extMatch = originalName.toLowerCase().match(/\.[a-z0-9]+$/);
+        const extension = extMatch ? extMatch[0] : '.png';
+        const safeFilename = `image-${Date.now()}${extension}`;
+        payload.imageFiles = [{ filename: safeFilename, data: imageBase64 }];
       } else if (!selectedProduct || form.imageUrls.trim()) {
         const urls = form.imageUrls
           .split(/\r?\n|,/)
